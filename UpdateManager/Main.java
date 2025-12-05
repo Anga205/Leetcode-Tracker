@@ -2,7 +2,7 @@ public class Main {
     public static void main(String[] args) throws Exception {
         String[] userNames = new String[] { "Anga205", "munish42" };
         // Initialize API and ReadingsFile
-        LeetCodeApi api = new LeetCodeApi("https://leetcode-api-faisalshohag.vercel.app");
+        LeetCodeApi api = new LeetCodeApi("https://leetcode-api-faisalshohag.anga.codes");
         ReadingsFile readingsFile = new ReadingsFile("ProgressViewer/public/readings.json");
 
         java.util.Map<String, java.util.List<Reading>> allReadings = readingsFile.load();
