@@ -1,6 +1,6 @@
 public class Main {
     public static void main(String[] args) throws Exception {
-        String[] userNames = new String[] { "Anga205", "munish42" };
+        String[] userNames = new String[] { "Anga205", "munish42", "shakirth-anisha", "prayasha_nanda", "sashshaikh12", "siri_n_shetty" };
         // Initialize API and ReadingsFile
         LeetCodeApi api = new LeetCodeApi("https://leetcode-api-faisalshohag.anga.codes");
         ReadingsFile readingsFile = new ReadingsFile("ProgressViewer/public/readings.json");

@@ -15,8 +15,12 @@ ChartJS.register(LineElement, PointElement, LinearScale, Tooltip, Legend, Title)
 
 type Reading = [number, number]
 type ReadingsJson = {
-  anga205?: Reading[]
-  munish42?: Reading[]
+  'anga205'?: Reading[]
+  'munish42'?: Reading[]
+  'shakirth-anisha'?: Reading[]
+  'prayasha_nanda'?: Reading[]
+  'sashshaikh12'?: Reading[]
+  'siri_n_shetty'?: Reading[]
 }
 
 function useReadings() {
@@ -118,6 +122,10 @@ export default function App() {
   const chartData = useMemo(() => {
     const anga = toXY(data.anga205).filter(p => p.x >= minTs && p.x <= maxTs)
     const munis = toXY(data.munish42).filter(p => p.x >= minTs && p.x <= maxTs)
+    const anisha = toXY(data['shakirth-anisha']).filter(p => p.x >= minTs && p.x <= maxTs)
+    const prayasha = toXY(data['prayasha_nanda']).filter(p => p.x >= minTs && p.x <= maxTs)
+    const hashir = toXY(data['sashshaikh12']).filter(p => p.x >= minTs && p.x <= maxTs)
+    const siri_n_shetty = toXY(data['siri_n_shetty']).filter(p => p.x >= minTs && p.x <= maxTs)
     const datasets: any[] = [
       {
         label: 'Angad',
@@ -134,36 +142,40 @@ export default function App() {
         backgroundColor: 'rgba(16, 185, 129, 0.2)',
         tension: 0.2,
         pointRadius: 2
+      },
+      {
+        label: 'Anisha',
+        data: anisha,
+        borderColor: 'rgb(236, 72, 153)',
+        backgroundColor: 'rgba(236, 72, 153, 0.2)',
+        tension: 0.2,
+        pointRadius: 2
+      },
+      {
+        label: 'Prayasha',
+        data: prayasha,
+        borderColor: 'rgb(234, 179, 8)',
+        backgroundColor: 'rgba(234, 179, 8, 0.2)',
+        tension: 0.2,
+        pointRadius: 2
+      },
+      {
+        label: 'Hashir',
+        data: hashir,
+        borderColor: 'rgb(33, 58, 212)',
+        backgroundColor: 'rgba(33, 58, 212, 0.2)',
+        tension: 0.2,
+        pointRadius: 2
+      },
+      {
+        label: 'Siri N Shetty',
+        data: siri_n_shetty,
+        borderColor: 'rgb(219, 139, 119)',
+        backgroundColor: 'rgba(219, 139, 119, 0.2)',
+        tension: 0.2,
+        pointRadius: 2
       }
     ]
-
-    const lastAnga = anga.length ? anga[anga.length - 1] : null
-    const lastMunis = munis.length ? munis[munis.length - 1] : null
-    if (lastAnga && lastMunis) {
-      const gap = Math.abs(lastAnga.x - lastMunis.x)
-      const oneDay = 24 * 60 * 60
-      if (gap > oneDay) {
-        const aheadIsAnga = lastAnga.x > lastMunis.x
-        const aheadTime = aheadIsAnga ? lastAnga.x : lastMunis.x
-        const lagPoint = aheadIsAnga ? lastMunis : lastAnga
-        const dotted = [
-          { x: lagPoint.x, y: lagPoint.y },
-          { x: aheadTime, y: lagPoint.y }
-        ]
-        const lagColor = aheadIsAnga ? 'rgb(16, 185, 129)' : 'rgb(59, 130, 246)'
-        datasets.push({
-          label: 'Gap',
-          data: dotted,
-          borderColor: lagColor,
-          backgroundColor: 'transparent',
-          borderDash: [6, 6],
-          borderWidth: 1.5,
-          pointRadius: 0,
-          tension: 0,
-          order: 3,
-        })
-      }
-    }
 
     return { datasets }
   }, [data, minTs, maxTs])
@@ -256,7 +268,7 @@ export default function App() {
     <div className="min-h-screen bg-neutral-900 text-neutral-100 p-4">
       <div className="max-w-5xl mx-auto">
         <header className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <h1 className="text-xl font-semibold">Angad vs Munis</h1>
+          <h1 className="text-xl font-semibold">Leetcode Progress Tracker (Angad & Friends)</h1>
           <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2 sm:gap-3">
             <div className="flex items-center gap-2">
               <label htmlFor="range" className="text-sm text-neutral-300">Time range</label>
