@@ -14,10 +14,12 @@ public class Main {
             while (!finishedUser) {
                 try {
                     String json = api.getUserJson(name); // throws if HTTP != 200
+                    System.out.println("Successfully retrieved data for " + name + " (bytes=" + (json == null ? 0 : json.length()) + ")");
                     Integer solved = api.parseTotalSolved(json);
                     // if unparsable, solved == null, retry
                     if (solved == null) {
-                        System.out.println("Unparsable response for " + name + ", retrying in 30s...");
+                        String snippet = (json == null) ? "<no body>" : (json.length() > 200 ? json.substring(0, 200) + "..." : json);
+                        System.out.println("Unparsable JSON for " + name + " (first 200 chars): " + snippet + ". Retrying in 30s...");
                         Thread.sleep(30000);
                         continue;
                     }
@@ -44,10 +46,13 @@ public class Main {
                     finishedUser = true; // valid response received (append or not)
                 } catch (Exception ex) {
                     // Catch all exceptions to retry
-                    System.out.println("Error for " + name + ": " + ex.getMessage() + ". Retrying in 30s...");
+                    System.out.println("Error fetching data for " + name + ": " + ex.getClass().getSimpleName() + ": " + ex.getMessage() + ". Retrying in 30s...");
                     try { Thread.sleep(30000); } catch (InterruptedException ie) { /* ignore */ }
                 }
             }
+
+            // Wait 5 seconds between pinging different user names to avoid overloading the API
+            try { Thread.sleep(5000); } catch (InterruptedException ie) { /* ignore */ }
         }
 
         readingsFile.save(allReadings);

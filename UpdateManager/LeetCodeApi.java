@@ -6,7 +6,12 @@ public class LeetCodeApi {
     }
 
     public String getUserJson(String username) throws Exception {
-        return HttpTextFetcher.fetchText(baseUrl + username);
+        String url = baseUrl + username;
+        try {
+            return HttpTextFetcher.fetchText(url);
+        } catch (Exception e) {
+            throw new Exception("Failed to fetch user JSON for '" + username + "' from " + url + ": " + e.getMessage(), e);
+        }
     }
 
     public Integer getUserTotalSolved(String username) throws Exception {
