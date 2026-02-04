@@ -83,6 +83,18 @@ export default function App() {
   const [range, setRange] = useState<'7d' | '30d' | '90d' | '1y' | 'all' | 'custom'>('all')
   const [customFrom, setCustomFrom] = useState<string>('')
   const [customTo, setCustomTo] = useState<string>('')
+  // Delta line creator UI state
+  const SERIES: { key: keyof ReadingsJson, label: string, color: string, bg: string }[] = [
+    { key: 'anga205', label: 'Angad', color: 'rgb(59, 130, 246)', bg: 'rgba(59, 130, 246, 0.2)' },
+    { key: 'munish42', label: 'Munis', color: 'rgb(16, 185, 129)', bg: 'rgba(16, 185, 129, 0.2)' },
+    { key: 'shakirth-anisha', label: 'Anisha', color: 'rgb(236, 72, 153)', bg: 'rgba(236, 72, 153, 0.2)' },
+    { key: 'prayasha_nanda', label: 'Prayasha', color: 'rgb(234, 179, 8)', bg: 'rgba(234, 179, 8, 0.2)' },
+    { key: 'sashshaikh12', label: 'Hashir', color: 'rgb(33, 58, 212)', bg: 'rgba(33, 58, 212, 0.2)' },
+    { key: 'siri_n_shetty', label: 'Siri N Shetty', color: 'rgb(219, 139, 119)', bg: 'rgba(219, 139, 119, 0.2)' }
+  ]
+  const [deltaA, setDeltaA] = useState<keyof ReadingsJson>('anga205')
+  const [deltaB, setDeltaB] = useState<keyof ReadingsJson>('shakirth-anisha')
+  const [deltaDefs, setDeltaDefs] = useState<Array<{ a: keyof ReadingsJson, b: keyof ReadingsJson, id: number }>>([])
 
   const nowSecs = Math.floor(Date.now() / 1000)
   const rangeToSeconds: Record<'7d' | '30d' | '90d' | '1y' | 'all', number | 'all'> = {
@@ -177,8 +189,44 @@ export default function App() {
       }
     ]
 
-    return { datasets }
-  }, [data, minTs, maxTs])
+    // Compute delta datasets
+    function nearestYAt(dataPts: { x: number; y: number }[], xVal: number): number | null {
+      if (!dataPts.length) return null
+      let best = dataPts[0]
+      let bestDist = Math.abs(best.x - xVal)
+      for (let i = 1; i < dataPts.length; i++) {
+        const d = dataPts[i]
+        const dist = Math.abs(d.x - xVal)
+        if (dist < bestDist) {
+          best = d
+          bestDist = dist
+        }
+      }
+      return best.y
+    }
+
+    const labelByKey = (k: keyof ReadingsJson) => SERIES.find(s => s.key === k)?.label ?? String(k)
+    const deltas = deltaDefs.map(def => {
+      const aPts = toXY(data[def.a]).filter(p => p.x >= minTs && p.x <= maxTs)
+      const bPts = toXY(data[def.b]).filter(p => p.x >= minTs && p.x <= maxTs)
+      const out: { x: number; y: number }[] = []
+      for (const p of aPts) {
+        const yB = nearestYAt(bPts, p.x)
+        if (yB != null) out.push({ x: p.x, y: p.y - yB })
+      }
+      return {
+        label: `Δ (${labelByKey(def.a)} − ${labelByKey(def.b)})`,
+        data: out,
+        borderColor: 'rgba(255,255,255,0.9)',
+        backgroundColor: 'rgba(255,255,255,0.15)',
+        tension: 0.2,
+        pointRadius: 1,
+        borderDash: [6, 3]
+      }
+    })
+
+    return { datasets: [...datasets, ...deltas] }
+  }, [data, minTs, maxTs, deltaDefs])
 
   const xDomain = useMemo(() => {
     const anga = toXY(data.anga205).filter(p => p.x >= minTs && p.x <= maxTs)
@@ -309,7 +357,55 @@ export default function App() {
           </div>
         </header>
 
-        <div className="w-full lg:max-w-[66vw] mx-auto h-80 md:h-[420px]">
+        {/* Delta creator */}
+        <div className="mb-3 flex flex-wrap items-center gap-2">
+          <span className="text-sm text-neutral-300">Add delta line:</span>
+          <select
+            value={deltaA as string}
+            onChange={e => setDeltaA(e.target.value as keyof ReadingsJson)}
+            className="bg-neutral-800 text-neutral-100 border border-neutral-700 rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+          >
+            {SERIES.map(s => (
+              <option key={s.key as string} value={s.key as string}>{s.label}</option>
+            ))}
+          </select>
+          <span className="text-sm text-neutral-400">minus</span>
+          <select
+            value={deltaB as string}
+            onChange={e => setDeltaB(e.target.value as keyof ReadingsJson)}
+            className="bg-neutral-800 text-neutral-100 border border-neutral-700 rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+          >
+            {SERIES.map(s => (
+              <option key={s.key as string} value={s.key as string}>{s.label}</option>
+            ))}
+          </select>
+          <button
+            className="pointer-events-auto bg-blue-600 hover:bg-blue-700 text-white rounded px-2 py-1 text-sm"
+            onClick={() => {
+              if (deltaA === deltaB) return
+              setDeltaDefs(prev => [{ a: deltaA, b: deltaB, id: Date.now() }, ...prev])
+            }}
+          >
+            Add Δ
+          </button>
+          {deltaDefs.length > 0 && (
+            <div className="flex flex-wrap gap-2 ml-2">
+              {deltaDefs.map(d => (
+                <div key={d.id} className="flex items-center gap-1 bg-neutral-800 border border-neutral-700 rounded px-2 py-1 text-xs">
+                  <span>Δ ({SERIES.find(s => s.key === d.a)?.label} − {SERIES.find(s => s.key === d.b)?.label})</span>
+                  <button
+                    className="text-red-400 hover:text-red-300"
+                    onClick={() => setDeltaDefs(prev => prev.filter(x => x.id !== d.id))}
+                  >
+                    ✕
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <div className="w-full lg:max-w-[66vw] mx-auto h-80 md:h-105">
           <Line data={chartData} options={options} />
         </div>
       </div>
