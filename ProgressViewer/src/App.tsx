@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   Chart as ChartJS,
   LineElement,
@@ -8,6 +8,7 @@ import {
   Legend,
   Title
 } from 'chart.js'
+import type { Chart as ChartType } from 'chart.js'
 import { Line } from 'react-chartjs-2'
 import GitHubButton from 'react-github-btn'
 
@@ -81,8 +82,10 @@ function formatDateOnly(ts: number) {
 export default function App() {
   const { data, loading, error } = useReadings()
   const [range, setRange] = useState<'7d' | '30d' | '90d' | '1y' | 'all' | 'custom'>('all')
-  const [customFrom, setCustomFrom] = useState<string>('')
-  const [customTo, setCustomTo] = useState<string>('')
+  const [customSpan, setCustomSpan] = useState<string>('90d')
+  const [customWindow, setCustomWindow] = useState<{ from: number; to: number } | null>(null)
+  const chartRef = useRef<ChartType<'line'> | null>(null)
+  const [drag, setDrag] = useState<null | { startX: number; currentX: number }>(null)
   // Delta line creator UI state
   const SERIES: { key: keyof ReadingsJson, label: string, color: string, bg: string }[] = [
     { key: 'anga205', label: 'Angad', color: 'rgb(59, 130, 246)', bg: 'rgba(59, 130, 246, 0.2)' },
@@ -105,31 +108,77 @@ export default function App() {
     'all': 'all'
   }
 
-  function parseLocalDateTimeToSeconds(v: string): number | null {
-    if (!v) return null
-    const ms = new Date(v).getTime()
-    if (Number.isNaN(ms)) return null
-    return Math.floor(ms / 1000)
+  function parseHumanDurationToSeconds(input: string): number | null {
+    const s = input.trim().toLowerCase()
+    if (!s) return null
+
+    // Supports: 5y 2mo 7d 13h 53m 1s (order doesn't matter)
+    // Approximations: 1y = 365d, 1mo = 30d
+    const re = /(-?\d+(?:\.\d+)?)\s*(y|yr|yrs|year|years|mo|mon|month|months|w|wk|wks|week|weeks|d|day|days|h|hr|hrs|hour|hours|m|min|mins|minute|minutes|s|sec|secs|second|seconds)\b/g
+    let total = 0
+    let matched = false
+    let m: RegExpExecArray | null
+    while ((m = re.exec(s)) != null) {
+      matched = true
+      const n = Number(m[1])
+      if (!Number.isFinite(n)) return null
+      const unit = m[2]
+      const secondsPerUnit =
+        unit === 'y' || unit === 'yr' || unit === 'yrs' || unit === 'year' || unit === 'years' ? 365 * 24 * 60 * 60 :
+        unit === 'mo' || unit === 'mon' || unit === 'month' || unit === 'months' ? 30 * 24 * 60 * 60 :
+        unit === 'w' || unit === 'wk' || unit === 'wks' || unit === 'week' || unit === 'weeks' ? 7 * 24 * 60 * 60 :
+        unit === 'd' || unit === 'day' || unit === 'days' ? 24 * 60 * 60 :
+        unit === 'h' || unit === 'hr' || unit === 'hrs' || unit === 'hour' || unit === 'hours' ? 60 * 60 :
+        unit === 'm' || unit === 'min' || unit === 'mins' || unit === 'minute' || unit === 'minutes' ? 60 :
+        1
+      total += n * secondsPerUnit
+    }
+    if (!matched) return null
+    // Negative/zero durations don't make sense for "last X".
+    if (!(total > 0)) return null
+    return Math.floor(total)
   }
+
+  function formatHumanDuration(seconds: number): string {
+    const s = Math.max(0, Math.floor(seconds))
+    const parts: string[] = []
+    let r = s
+    const units: Array<[string, number]> = [
+      ['y', 365 * 24 * 60 * 60],
+      ['mo', 30 * 24 * 60 * 60],
+      ['d', 24 * 60 * 60],
+      ['h', 60 * 60],
+      ['m', 60],
+      ['s', 1]
+    ]
+    for (const [label, size] of units) {
+      if (r >= size) {
+        const q = Math.floor(r / size)
+        r -= q * size
+        parts.push(`${q}${label}`)
+      }
+    }
+    return parts.length ? parts.join(' ') : '0s'
+  }
+
+  const customSpanSeconds = useMemo(() => parseHumanDurationToSeconds(customSpan), [customSpan])
 
   const [minTs, maxTs] = useMemo((): [number, number] => {
     if (range === 'custom') {
-      const from = parseLocalDateTimeToSeconds(customFrom)
-      const to = parseLocalDateTimeToSeconds(customTo)
-      let lo = -Infinity
-      let hi = Infinity
-      if (from != null) lo = from
-      if (to != null) hi = to
-      if (from != null && to != null && from > to) {
-        lo = to
-        hi = from
+      if (customWindow) {
+        const lo = Math.min(customWindow.from, customWindow.to)
+        const hi = Math.max(customWindow.from, customWindow.to)
+        return [lo, hi]
       }
-      return [lo, hi]
+      if (customSpanSeconds != null) {
+        return [nowSecs - customSpanSeconds, nowSecs]
+      }
+      return [-Infinity, Infinity]
     }
     const span = rangeToSeconds[range as Exclude<typeof range, 'custom'>]
     if (span === 'all') return [-Infinity, Infinity]
     return [nowSecs - span, Infinity]
-  }, [range, customFrom, customTo, nowSecs])
+  }, [range, customWindow, customSpanSeconds, nowSecs])
 
   const chartData = useMemo(() => {
     const anga = toXY(data.anga205).filter(p => p.x >= minTs && p.x <= maxTs)
@@ -258,6 +307,11 @@ export default function App() {
     return {
       responsive: true,
       maintainAspectRatio: false,
+      layout: {
+        padding: {
+          top: 12
+        }
+      },
       plugins: {
         title: {
           display: true,
@@ -274,8 +328,10 @@ export default function App() {
           }
         },
         legend: {
+          padding: 14,
           labels: {
             color: '#e5e7eb',
+            padding: 16,
             filter: (legendItem: any) => legendItem.text !== 'Gap'
           }
         }
@@ -316,14 +372,36 @@ export default function App() {
     <div className="min-h-screen bg-neutral-900 text-neutral-100 p-4">
       <div className="max-w-5xl mx-auto">
         <header className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <h1 className="text-xl font-semibold">Leetcode Progress Tracker (Angad & Friends)</h1>
-          <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2 sm:gap-3">
-            <div className="flex items-center gap-2">
-              <label htmlFor="range" className="text-sm text-neutral-300">Time range</label>
+          <div>
+            <h1 className="text-xl font-semibold leading-tight">Leetcode Progress Tracker</h1>
+            <div className="text-sm text-neutral-400">Angad & friends</div>
+          </div>
+          <div className="shrink-0">
+            <GitHubButton
+              href="https://github.com/Anga205/anga_vs_munis_tracker"
+              data-color-scheme="no-preference: dark; light: dark; dark: dark;"
+              data-size="large"
+              aria-label="Star Anga205/anga_vs_munis_tracker on GitHub"
+            >
+              Source Code
+            </GitHubButton>
+          </div>
+        </header>
+
+        <div className="mb-4 grid grid-cols-1 md:grid-cols-2 gap-3">
+          {/* Time range */}
+          <section className="bg-neutral-900/40 border border-neutral-800 rounded-lg p-3">
+            <div className="text-sm font-medium text-neutral-200 mb-2">Time</div>
+            <div className="flex flex-wrap items-center gap-2">
+              <label htmlFor="range" className="text-sm text-neutral-300">Range</label>
               <select
                 id="range"
                 value={range}
-                onChange={e => setRange(e.target.value as typeof range)}
+                onChange={e => {
+                  const next = e.target.value as typeof range
+                  setRange(next)
+                  if (next !== 'custom') setCustomWindow(null)
+                }}
                 className="bg-neutral-800 text-neutral-100 border border-neutral-700 rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
               >
                 <option value="7d">Last 7 days</option>
@@ -333,95 +411,179 @@ export default function App() {
                 <option value="all">All time</option>
                 <option value="custom">Custom…</option>
               </select>
+
+              {range === 'custom' && (
+                <>
+                  <span className="hidden sm:inline text-sm text-neutral-500">|</span>
+                  <label className="text-sm text-neutral-300" htmlFor="customSpan">Last</label>
+                  <input
+                    id="customSpan"
+                    inputMode="text"
+                    placeholder="90d or 1y 2mo"
+                    value={customSpan}
+                    onChange={e => {
+                      setCustomSpan(e.target.value)
+                      setCustomWindow(null)
+                    }}
+                    className="bg-neutral-800 text-neutral-100 border border-neutral-700 rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 w-64 max-w-full"
+                    aria-describedby="customSpanHelp"
+                  />
+                </>
+              )}
             </div>
             {range === 'custom' && (
-              <div className="flex flex-wrap items-center gap-2">
-                <label className="text-sm text-neutral-300" htmlFor="from">From</label>
-                <input
-                  id="from"
-                  type="datetime-local"
-                  value={customFrom}
-                  onChange={e => setCustomFrom(e.target.value)}
-                  className="bg-neutral-800 text-neutral-100 border border-neutral-700 rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-                <label className="text-sm text-neutral-300" htmlFor="to">To</label>
-                <input
-                  id="to"
-                  type="datetime-local"
-                  value={customTo}
-                  onChange={e => setCustomTo(e.target.value)}
-                  className="bg-neutral-800 text-neutral-100 border border-neutral-700 rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
+              <div id="customSpanHelp" className="mt-2 text-xs text-neutral-400">
+                {customWindow ? (
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span>
+                      Selected: {formatDateOnly(customWindow.from)} → {formatDateOnly(customWindow.to)} ({formatHumanDuration(Math.abs(customWindow.to - customWindow.from))})
+                    </span>
+                    <button
+                      type="button"
+                      className="text-blue-300 hover:text-blue-200 underline underline-offset-2"
+                      onClick={() => setCustomWindow(null)}
+                      title="Return to typed duration"
+                    >
+                      Clear selection
+                    </button>
+                  </div>
+                ) : (
+                  <>
+                    {customSpanSeconds != null
+                      ? `Showing last ${formatHumanDuration(customSpanSeconds)}. Drag on the graph to select a window.`
+                      : 'Type a duration like 90d, 7d 12h, 1y 2mo. Drag on the graph to select a window.'}
+                  </>
+                )}
               </div>
             )}
-          </div>
-        </header>
+          </section>
 
-        {/* Delta creator */}
-        <div className="mb-3 flex flex-wrap items-center gap-2">
-          <span className="text-sm text-neutral-300">Add delta line:</span>
-          <select
-            value={deltaA as string}
-            onChange={e => setDeltaA(e.target.value as keyof ReadingsJson)}
-            className="bg-neutral-800 text-neutral-100 border border-neutral-700 rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-          >
-            {SERIES.map(s => (
-              <option key={s.key as string} value={s.key as string}>{s.label}</option>
-            ))}
-          </select>
-          <span className="text-sm text-neutral-400">minus</span>
-          <select
-            value={deltaB as string}
-            onChange={e => setDeltaB(e.target.value as keyof ReadingsJson)}
-            className="bg-neutral-800 text-neutral-100 border border-neutral-700 rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-          >
-            {SERIES.map(s => (
-              <option key={s.key as string} value={s.key as string}>{s.label}</option>
-            ))}
-          </select>
-          <button
-            className="pointer-events-auto bg-blue-600 hover:bg-blue-700 text-white rounded px-2 py-1 text-sm"
-            onClick={() => {
-              if (deltaA === deltaB) return
-              setDeltaDefs(prev => [{ a: deltaA, b: deltaB, id: Date.now() }, ...prev])
-            }}
-          >
-            Add Δ
-          </button>
-          {deltaDefs.length > 0 && (
-            <div className="flex flex-wrap gap-2 ml-2">
-              {deltaDefs.map(d => (
-                <div key={d.id} className="flex items-center gap-1 bg-neutral-800 border border-neutral-700 rounded px-2 py-1 text-xs">
-                  <span>Δ ({SERIES.find(s => s.key === d.a)?.label} − {SERIES.find(s => s.key === d.b)?.label})</span>
-                  <button
-                    className="text-red-400 hover:text-red-300"
-                    onClick={() => setDeltaDefs(prev => prev.filter(x => x.id !== d.id))}
-                  >
-                    ✕
-                  </button>
-                </div>
-              ))}
+          {/* Delta creator */}
+          <section className="bg-neutral-900/40 border border-neutral-800 rounded-lg p-3">
+            <div className="text-sm font-medium text-neutral-200 mb-2">Delta lines</div>
+            <div className="flex flex-wrap items-center gap-2">
+              <label className="text-sm text-neutral-300" htmlFor="deltaA">A</label>
+              <select
+                id="deltaA"
+                value={deltaA as string}
+                onChange={e => setDeltaA(e.target.value as keyof ReadingsJson)}
+                className="bg-neutral-800 text-neutral-100 border border-neutral-700 rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                {SERIES.map(s => (
+                  <option key={s.key as string} value={s.key as string}>{s.label}</option>
+                ))}
+              </select>
+              <span className="text-sm text-neutral-400">−</span>
+              <label className="text-sm text-neutral-300" htmlFor="deltaB">B</label>
+              <select
+                id="deltaB"
+                value={deltaB as string}
+                onChange={e => setDeltaB(e.target.value as keyof ReadingsJson)}
+                className="bg-neutral-800 text-neutral-100 border border-neutral-700 rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                {SERIES.map(s => (
+                  <option key={s.key as string} value={s.key as string}>{s.label}</option>
+                ))}
+              </select>
+              <button
+                className="bg-blue-600 hover:bg-blue-700 text-white rounded px-2 py-1 text-sm"
+                onClick={() => {
+                  if (deltaA === deltaB) return
+                  setDeltaDefs(prev => [{ a: deltaA, b: deltaB, id: Date.now() }, ...prev])
+                }}
+              >
+                Add
+              </button>
             </div>
-          )}
+            {deltaDefs.length > 0 && (
+              <div className="flex flex-wrap gap-2 mt-2">
+                {deltaDefs.map(d => (
+                  <div key={d.id} className="flex items-center gap-1 bg-neutral-800 border border-neutral-700 rounded px-2 py-1 text-xs">
+                    <span>Δ ({SERIES.find(s => s.key === d.a)?.label} − {SERIES.find(s => s.key === d.b)?.label})</span>
+                    <button
+                      className="text-red-400 hover:text-red-300 ml-1"
+                      onClick={() => setDeltaDefs(prev => prev.filter(x => x.id !== d.id))}
+                      title="Remove"
+                    >
+                      ✕
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </section>
         </div>
 
-        <div className="w-full lg:max-w-[66vw] mx-auto h-80 md:h-105">
-          <Line data={chartData} options={options} />
-        </div>
-      </div>
-      <div className="fixed inset-x-0 bottom-0 z-10 pointer-events-none">
-        <div className="flex items-end justify-between w-full pb-[0.3vh]">
-          <div />
-          <a className='pointer-events-auto pr-[1vh]'>
-            <GitHubButton
-              href="https://github.com/Anga205/anga_vs_munis_tracker"
-              data-color-scheme="no-preference: dark; light: dark; dark: dark;"
-              data-size="large"
-              aria-label="Star Anga205/anga_vs_munis_tracker on GitHub"
-            >
-              Source Code
-            </GitHubButton>
-          </a>
+        <div
+          className="w-full h-80 md:h-96 relative bg-neutral-900/30 border border-neutral-800 rounded-lg p-2"
+          onPointerDown={e => {
+            const chart = chartRef.current
+            const canvas = chart?.canvas
+            if (!chart || !canvas) return
+            const rect = canvas.getBoundingClientRect()
+            const x = e.clientX - rect.left
+            const y = e.clientY - rect.top
+            const area = chart.chartArea
+            if (!area) return
+            // Only start selection if inside plot area.
+            if (x < area.left || x > area.right || y < area.top || y > area.bottom) return
+            e.currentTarget.setPointerCapture(e.pointerId)
+            setDrag({ startX: x, currentX: x })
+          }}
+          onPointerMove={e => {
+            if (!drag) return
+            const chart = chartRef.current
+            const canvas = chart?.canvas
+            if (!chart || !canvas) return
+            const rect = canvas.getBoundingClientRect()
+            const x = e.clientX - rect.left
+            setDrag(prev => (prev ? { ...prev, currentX: x } : prev))
+          }}
+          onPointerUp={() => {
+            const chart = chartRef.current
+            const area = chart?.chartArea
+            const scaleX: any = chart?.scales?.x
+            if (!chart || !area || !scaleX || !drag) {
+              setDrag(null)
+              return
+            }
+
+            const a = Math.max(area.left, Math.min(area.right, drag.startX))
+            const b = Math.max(area.left, Math.min(area.right, drag.currentX))
+            const width = Math.abs(b - a)
+            setDrag(null)
+            if (width < 6) return
+
+            const x0 = scaleX.getValueForPixel(Math.min(a, b))
+            const x1 = scaleX.getValueForPixel(Math.max(a, b))
+            if (!Number.isFinite(x0) || !Number.isFinite(x1)) return
+            const from = Math.floor(Number(x0))
+            const to = Math.floor(Number(x1))
+            setCustomWindow({ from, to })
+            setCustomSpan(formatHumanDuration(Math.abs(to - from)))
+            setRange('custom')
+          }}
+          onPointerLeave={() => setDrag(null)}
+        >
+          <Line ref={chartRef} data={chartData} options={options} />
+          {(() => {
+            const chart = chartRef.current
+            const area = chart?.chartArea
+            if (!drag || !chart || !area) return null
+            const left = Math.max(area.left, Math.min(area.right, Math.min(drag.startX, drag.currentX)))
+            const right = Math.max(area.left, Math.min(area.right, Math.max(drag.startX, drag.currentX)))
+            return (
+              <div
+                className="absolute bg-blue-500/20 border border-blue-400/60 rounded-sm pointer-events-none"
+                style={{
+                  left,
+                  width: Math.max(0, right - left),
+                  top: area.top,
+                  height: Math.max(0, area.bottom - area.top)
+                }}
+              />
+            )
+          })()}
         </div>
       </div>
     </div>
