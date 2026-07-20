@@ -1,17 +1,6 @@
-# Keep the actual data flow and updater logic visible in GitHub.
-/ProgressViewer/src/App.tsx linguist-generated=false
+# Make the repository read primarily as a Java project in GitHub language stats.
 /UpdateManager/*.java linguist-generated=false
-/.github/workflows/update.yml linguist-generated=false
-/ProgressViewer/public/readings.json linguist-generated=false
 
-# Collapse the mostly presentational and build-wiring files.
-/ProgressViewer/src/main.tsx linguist-generated=true
-/ProgressViewer/src/index.css linguist-generated=true
-/ProgressViewer/index.html linguist-generated=true
-/ProgressViewer/package.json linguist-generated=true
-/ProgressViewer/vite.config.ts linguist-generated=true
-/ProgressViewer/eslint.config.js linguist-generated=true
-/ProgressViewer/tsconfig.json linguist-generated=true
-/ProgressViewer/tsconfig.app.json linguist-generated=true
-/ProgressViewer/tsconfig.node.json linguist-generated=true
-/ProgressViewer/netlify.toml linguist-generated=true
+# Treat the frontend, workflow, and generated artifacts as supporting files.
+/ProgressViewer/** linguist-generated=true
+/.github/workflows/update.yml linguist-generated=true
