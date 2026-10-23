@@ -93,7 +93,7 @@ go run ./UpdateManager
 
 ## Deployment
 
-The deployed site is available at <https://battle.anga.codes>.
+The deployed site is available at <https://leetcode-tracker.anga.codes>.
 
 The deployment model is deliberately simple: the repository stores the historical readings, the workflow updates that history, and Netlify serves the built static app from the latest commit.
 
