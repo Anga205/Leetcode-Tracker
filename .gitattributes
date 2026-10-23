@@ -1,6 +1,4 @@
-# Make the repository read primarily as a Java project in GitHub language stats.
-/UpdateManager/*.java linguist-generated=false
-
-# Treat the frontend, workflow, and generated artifacts as supporting files.
+# Treat the updater, frontend, workflow, and generated artifacts as supporting files.
+/UpdateManager/*.go linguist-generated=false
 /ProgressViewer/** linguist-generated=true
 /.github/workflows/update.yml linguist-generated=true
