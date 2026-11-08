@@ -23,26 +23,24 @@ jobs:
               uses: actions/checkout@v4
               with:
                 fetch-depth: 1
-            - name: Set up Go
-              uses: actions/setup-go@v5
+            - name: Set up Rust
+              uses: dtolnay/rust-toolchain@stable
               with:
-                  go-version: '1.24'
-                  cache: true
-                  cache-dependency-path: go.mod
-            - name: Restore updater binary
-              id: binary-cache
-              uses: actions/cache@v4
+                  toolchain: stable
+                  components: rustfmt
+            - name: Cache Rust dependencies and build artifacts
+              uses: Swatinem/rust-cache@v2
               with:
-                  path: .cache/update-manager
-                  key: update-manager-${{ runner.os }}-go1.24-${{ hashFiles('go.mod', 'UpdateManager/**/*.go') }}
+                  workspaces: UpdateManager -> target
+                  cache-on-failure: true
+            - name: Check formatting
+              run: cargo fmt --manifest-path UpdateManager/Cargo.toml --all -- --check
+            - name: Run tests
+              run: cargo test --manifest-path UpdateManager/Cargo.toml --locked
+            - name: Build updater
+              run: cargo build --manifest-path UpdateManager/Cargo.toml --release --locked
             - name: Run UpdateManager
-              run: |
-                mkdir -p .cache
-                if [ "${{ steps.binary-cache.outputs.cache-hit }}" != "true" ]; then
-                  go build -o .cache/update-manager ./UpdateManager
-                fi
-                chmod +x .cache/update-manager
-                .cache/update-manager
+              run: UpdateManager/target/release/update-manager
             - name: Commit and push changes
               run: |
                   git config user.name 'Leetcode Update Bot'

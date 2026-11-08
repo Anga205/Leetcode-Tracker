@@ -1,4 +1,6 @@
 *.class
+UpdateManager/target
+
 # Logs
 ProgressViewer/logs
 ProgressViewer/*.log

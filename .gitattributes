@@ -1,4 +1,4 @@
 # Treat the updater, frontend, workflow, and generated artifacts as supporting files.
-/UpdateManager/*.go linguist-generated=false
+/UpdateManager/src/** linguist-generated=false
 /ProgressViewer/** linguist-generated=true
 /.github/workflows/update.yml linguist-generated=true
